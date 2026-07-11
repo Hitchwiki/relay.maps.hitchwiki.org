@@ -1,3 +1,5 @@
+Lives in Hitchwiki server /var/www/relay.maps.hitchwiki.org
+
 # relay.nomadwiki.org
 
 This is the central Nostr relay for [maps.hitchwiki.org](https://maps.hitchwiki.org).
