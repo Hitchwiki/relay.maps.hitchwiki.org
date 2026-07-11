@@ -1,0 +1,28 @@
+# Project name pinned so the container is always relaymapshitchwikiorg-relay-1
+# regardless of the directory name. Referenced by stats.sh / delete-kind-36820.sh.
+name: relaymapshitchwikiorg
+
+services:
+  relay:
+    image: scsibug/nostr-rs-relay:latest
+    user: "100:100"
+    ports:
+      - "7000:8080"
+    environment:
+      - RUST_LOG=info,nostr_rs_relay=info
+    volumes:
+      - ./data:/usr/src/app/db:Z
+      - ./config.toml:/usr/src/app/config.toml:ro,Z
+    restart: unless-stopped
+    networks:
+      shared:
+        # Reachable inside the shared docker network under the SAME hostname used
+        # publicly (wss://relay.maps.hitchwiki.org). Consumers (maps app, Caddy) use
+        # this alias; the docker service name `relay` also resolves on the network.
+        aliases:
+          - relay.maps.hitchwiki.org
+
+networks:
+  shared:
+    name: hitchwiki-relay
+    external: true
