@@ -4,11 +4,9 @@ This is a **Nostr relay** (`scsibug/nostr-rs-relay`) serving as the central data
 
 Directory: `/var/www/relay.maps.hitchwiki.org` · Container: `relaymapshitchwikiorg-relay-1` (project `relaymapshitchwikiorg`, pinned in `docker-compose.yml`).
 
-> Note: the public hostname **`relay.nomadwiki.org`** is a *separate, empty* strfry relay
-> (`nostr-relay:7777`), not this one. This relay is exposed publicly at
-> **`wss://relay.maps.hitchwiki.org`** and reachable inside the docker network at
-> **`ws://relay.maps.hitchwiki.org:8080`** on the shared `hitchwiki-relay` network (the
-> docker service name `relay` also resolves).
+This relay is exposed publicly at **`wss://relay.maps.hitchwiki.org`** and reachable inside the
+docker network at **`ws://relay.maps.hitchwiki.org:8080`** on the shared `hitchwiki-relay` network
+(the docker service name `relay` also resolves).
 
 ## Single-kind relay
 
@@ -250,10 +248,43 @@ Beware over-broad patterns: `LIKE '%test%'` matches legitimate notes ("Tested in
 
 Everything else in `config.toml` is commented out and runs on `nostr-rs-relay` defaults.
 
-> **Known inconsistency:** `config.toml` still advertises `relay_url = "wss://relay.nomadwiki.org/"`
-> and a matching `description`, so the relay reports the wrong identity over NIP-11 despite being
-> served at `relay.maps.hitchwiki.org`. `README.md` is titled `relay.nomadwiki.org` for the same
-> reason. Neither has been corrected yet.
+## Daily hitchmap.com import
+
+New hitchmap.com rides are pulled in every night by `./import-hitchmap-daily.sh`, a wrapper around
+`hitchhiking-data-standard/nostr/publish_hitchmap_with_nicknames.py`. That script
+downloads `https://hitchmap.com/dump.sqlite`, reads the newest hitchmap.com `submission_time`
+already in `data/nostr.db` as its cutoff, and writes only the rides submitted after it — so
+re-running never duplicates. It writes to the SQLite file directly (not over the websocket), which
+is why it has to run on this host, as root (`data/` is owned by uid `100`).
+
+```bash
+# Manual run
+sudo ./import-hitchmap-daily.sh
+
+# See what would be imported without writing
+cd hitchhiking-data-standard/nostr && .venv/bin/python3 publish_hitchmap_with_nicknames.py --dry-run
+
+# Log
+sudo tail -30 /var/log/hitchmap-import.log
+```
+
+Cron (in the `hitchwiki` crontab, `CRON_TZ=Europe/Berlin`):
+
+```
+15 6 * * * /usr/bin/sudo -n /var/www/relay.maps.hitchwiki.org/import-hitchmap-daily.sh
+```
+
+Notes:
+
+- `flock` on `/var/lock/hitchmap-import.lock` keeps runs from overlapping; the log is trimmed to
+  the last 2000 lines once it passes 5 MB.
+- The Python script **exits 1 with "Nothing to publish"** when the relay is already up to date.
+  That is the normal no-op outcome, not a failure — the wrapper always exits 0 so cron stays quiet.
+- The 60 MB `dump.sqlite` is re-downloaded into `hitchhiking-data-standard/nostr/` on every run
+  (replaced, not accumulated) and chowned back to `hitchwiki:hitchwiki` afterwards.
+- Rides without a `submission_time` in the dump are never imported — they cannot be placed
+  relative to the cutoff.
+- The import bypasses the relay process, so the `event_kind_allowlist` does not apply to it.
 
 ## Docker
 

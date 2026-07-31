@@ -4,6 +4,9 @@ data/
 # Hitchhiking data standard — lives in its own repo (Hitchwiki/hitchhiking-data-standard)
 hitchhiking-data-standard/
 
+# Import/run logs
+*.log
+
 # SQLite database + side files
 *.db
 *.db-shm

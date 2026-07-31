@@ -2,13 +2,13 @@
 
 [info]
 # The advertised URL for the Nostr websocket.
-relay_url = "wss://relay.nomadwiki.org/"
+relay_url = "wss://relay.maps.hitchwiki.org/"
 
 # Relay information for clients.  Put your unique server name here.
-name = "nostr-rs-relay"
+name = "relay.maps.hitchwiki.org"
 
 # Description
-description = "relay.nomadwiki.org\n\nA good place for notes related to hitchhiking, and other stuff"
+description = "relay.maps.hitchwiki.org\n\nA good place for notes related to hitchhiking, and other stuff"
 
 # Administrative contact pubkey
 #pubkey = "0c2d168a4ae8ca58c9f1ab237b5df682599c6c7ab74307ea8b05684b60405d41"
@@ -134,9 +134,11 @@ reject_future_seconds = 1800
 #]
 
 # Event kind allowlist. Events other than these kinds will be discarded.
-# This relay stores only hitchhiking ride notes (kind 36820).
+# This relay stores hitchhiking ride notes (kind 36820) plus NIP-09 deletion
+# requests (kind 5), so clients can delete their own rides over the wire.
 event_kind_allowlist = [
     36820,
+    5,
 ]
 
 [authorization]

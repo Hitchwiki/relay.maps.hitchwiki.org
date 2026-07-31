@@ -4,10 +4,8 @@ name: relaymapshitchwikiorg
 
 services:
   relay:
-    image: scsibug/nostr-rs-relay:latest
+    image: scsibug/nostr-rs-relay:latest@sha256:48d54c2d2781577cf3ed2951112f0953dc2c5e7c9d2ea20c64e8c0fa37d16e4d
     user: "100:100"
-    ports:
-      - "7000:8080"
     environment:
       - RUST_LOG=info,nostr_rs_relay=info
     volumes:
