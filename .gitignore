@@ -11,3 +11,5 @@ hitchhiking-data-standard/
 *.db
 *.db-shm
 *.db-wal
+
+.env
