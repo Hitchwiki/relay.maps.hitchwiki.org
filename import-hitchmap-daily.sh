@@ -39,10 +39,21 @@ cd "$NOSTR_DIR" || exit 1
     # The wget progress bar is carriage-return animated; unroll it and drop the partial frames.
     "$PYTHON" "$SCRIPT" "$@" 2>&1 | tr '\r' '\n' | grep -v '^ *[0-9]\+% \['
     status=${PIPESTATUS[0]}
-    # The script exits 1 with "Nothing to publish" when the relay is already up to date.
     echo "=== $(date -Is) hitchmap import finished (exit $status) ==="
 } >>"$LOG" 2>&1
 
 chown "$OWNER" "$NOSTR_DIR/dump.sqlite" 2>/dev/null
 
-exit 0
+# Exit codes of the Python script:
+#   0  rides were published and the relay database checked out afterwards
+#   1  nothing to publish, the relay is already up to date - the normal no-op, keep cron quiet
+#   2  no usable dump.sqlite could be downloaded, nothing was published
+#   3  the relay database is not writable, or the batch did not land intact
+# Only 0 and 1 are healthy. Anything else is reported so that cron mails it.
+case "$status" in
+    0|1) exit 0 ;;
+    2)   echo "hitchmap import: could not download a usable dump, nothing published (see $LOG)" >&2 ;;
+    3)   echo "hitchmap import: relay database check failed, see $LOG" >&2 ;;
+    *)   echo "hitchmap import: failed with exit $status, see $LOG" >&2 ;;
+esac
+exit "$status"

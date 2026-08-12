@@ -134,17 +134,16 @@ NIP-05 verification, pay-to-relay accounts, and payment invoices. All three feat
 
 | Metric | Value |
 |---|---|
-| Events | 75,514 (all kind 36820) |
-| Tags | 921,967 |
-| Distinct authors | 4 |
-| Date range | 2026-03-26 → 2026-07-25 |
+| Events | 80,097 (all kind 36820) |
+| Tags | 976,295 |
+| Distinct authors | 3 |
+| Date range | 2026-03-26 → 2026-08-12 |
 
 Authors are bulk importers, not individual users:
 
 | Pubkey (hex, truncated) | Events |
 |---|---:|
-| `d17ff51bfc32d492…c5c5dbd5` | 59,089 |
-| `6623bb9cbae2220e…8d4d142e` | 16,422 |
+| `6623bb9cbae2220e…8d4d142e` | 80,094 |
 | `5dad78398a36eceb…f4b65a9f` | 2 |
 | `2ab69bdb1b54a7c9…bec7e22bb` | 1 |
 
@@ -154,10 +153,10 @@ Both the `d` tag and the inner JSON `source` field encode the origin app. Counts
 
 | `d` tag prefix | Count |
 |---|---:|
-| `hitchwiki.org-<uuid>` | 42,469 |
-| `hitchmap.com-<uuid>` | 25,356 |
+| `hitchwiki.org-<uuid>` | 42,466 |
+| `hitchmap.com-<uuid>` | 29,404 |
 | `liftershalte.info-<uuid>` | 8,251 |
-| `maps.hitchwiki.org-<uuid>` | 962 |
+| `maps.hitchwiki.org-<uuid>` | 1,496 |
 
 ### Content field structure (kind-36820)
 
@@ -278,13 +277,82 @@ Notes:
 
 - `flock` on `/var/lock/hitchmap-import.lock` keeps runs from overlapping; the log is trimmed to
   the last 2000 lines once it passes 5 MB.
-- The Python script **exits 1 with "Nothing to publish"** when the relay is already up to date.
-  That is the normal no-op outcome, not a failure — the wrapper always exits 0 so cron stays quiet.
 - The 60 MB `dump.sqlite` is re-downloaded into `hitchhiking-data-standard/nostr/` on every run
   (replaced, not accumulated) and chowned back to `hitchwiki:hitchwiki` afterwards.
+
+### Exit codes
+
+The Python script's exit code says what happened, and the wrapper passes anything unhealthy on to
+cron instead of swallowing it:
+
+| Code | Meaning | Wrapper |
+|---:|---|---|
+| 0 | rides published, relay database verified afterwards | exits 0 |
+| 1 | nothing to publish, the relay is up to date — the normal no-op | exits 0, cron stays quiet |
+| 2 | no usable `dump.sqlite` could be downloaded, nothing was published | exits 2 + message on stderr |
+| 3 | relay database not writable, or the batch did not land intact | exits 3 + message on stderr |
 - Rides without a `submission_time` in the dump are never imported — they cannot be placed
   relative to the cutoff.
 - The import bypasses the relay process, so the `event_kind_allowlist` does not apply to it.
+
+### Duplicate filtering
+
+hitchmap.com stores some submissions several times over: a double-clicked or retried submit writes
+two or more `points` rows that are identical apart from their `id` and a sub-second difference in
+`datetime`. The dump currently holds ~120 such clusters. Publishing them unchanged had put **119
+redundant ride notes** in the relay; they were deleted on **2026-08-12** (backup:
+`data/nostr.db.bak-20260812-predupclean`).
+
+`publish_hitchmap_with_nicknames.py` now filters them out before publishing. Two rides are the same
+ride when
+
+- position (rounded to 7 decimals, ~1 cm), comment, ride time, rating and nickname all match, **and**
+- their submission times are within `DUP_WINDOW_S` (300 s) of each other.
+
+The check runs twice: against the rides already in the relay (so an overlapping `--since`, or a
+cutoff that moved backwards, cannot re-import anything) and within the batch itself. The earliest
+submission of a cluster is the one kept. Both counts are printed on every run:
+
+```
+Dropped 12 rides duplicated inside the dump and 3932 already published; 525 left to publish
+```
+
+Two caveats:
+
+- The filter lives in the import path only. Events pushed **over the websocket** by clients are not
+  deduplicated, so live submissions can still land twice.
+- Rides that appear in the dump with a `submission_time` older than the relay's current maximum are
+  skipped by the cutoff and never picked up again. As of 2026-08-12 that gap is ~540 rides submitted
+  in late July / August. Now that the importer dedupes against the relay, the cutoff could safely be
+  backdated a few days to catch them.
+
+### Integrity checks
+
+On **2026-08-12** the download produced a 19 MB `dump.sqlite` holding nothing but the `points`
+table, and the run died on `select … from user` — after it had already replaced the previous dump.
+Both ends of the import are now checked.
+
+**The dump, before it is used.** It is fetched to `dump.sqlite.part` and only moved into place once
+it passes: at least 40 MB, `PRAGMA quick_check` = `ok`, `points` and `user` both present, `points`
+carrying every column the import reads, at least 60,000 points, and at least one submission time. A
+failed download is retried up to three times; if none succeeds the script exits **2** without
+publishing and **leaves the previous dump untouched**. A dump that shrank more than 5 % since the
+last run is logged as a warning, not an error — bans and deletions legitimately shrink it.
+
+**The relay database, around the write.** The import writes `event` and `tag` rows itself rather
+than going through the relay process, so a half-written batch would otherwise pass unnoticed:
+
+- Before building anything, a write is attempted and rolled back. `mode=rw` alone is not enough —
+  SQLite opens an unwritable file read-only and only complains on the first real write. Running the
+  import as a non-root user now fails immediately with exit **3** instead of printing one error per
+  record.
+- Afterwards, `event` must have grown by exactly the number of records published, `tag` by exactly
+  12 per event (one `d`, ten `g`, one `published_at`), and no new orphaned tags may have appeared.
+  Any mismatch is printed and exits **3**.
+
+All of this was exercised against deliberately broken dumps (truncated at 19 MB and 45 MB, random
+bytes, valid SQLite with no dump tables, `user` dropped, only 11k points, and a URL that 404s), a
+read-only relay database, and a real 57-ride publish into a copy of the live database.
 
 ## Docker
 
