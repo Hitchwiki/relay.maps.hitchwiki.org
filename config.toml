@@ -92,13 +92,22 @@ reject_future_seconds = 1800
 # Limiting event creation is highly recommended if your relay is
 # public!
 #
-#messages_per_sec = 5
+# Set 2026-08-17 (issue #59, "restrict who can send to the relay, sending to
+# it in bulk makes all other services unavailable"): this relay's normal
+# traffic is tiny (order of a few dozen ride notes/day from the app; the
+# daily hitchmap.com bulk import writes SQLite directly and bypasses the
+# relay process entirely per this repo's own README, so it is unaffected by
+# this limit). 5 events/sec sustained is generous headroom over real traffic
+# while still bounding a runaway or malicious connection.
+messages_per_sec = 5
 
 # Limit client subscriptions created, averaged over one minute.  Must
 # be an integer.  If not set (or set to 0), defaults to unlimited.
 # Strongly recommended to set this to a low value such as 10 to ensure
 # fair service.
-#subscriptions_per_min = 0
+#
+# Set 2026-08-17 (issue #59, same reasoning as messages_per_sec above).
+subscriptions_per_min = 10
 
 # UNIMPLEMENTED...
 # Limit how many concurrent database connections a client can have.
